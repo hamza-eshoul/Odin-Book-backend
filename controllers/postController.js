@@ -1,99 +1,160 @@
 const Post = require("../models/postModel");
 const Comment = require("../models/commentModel");
+const cloudinary = require("../cloudinary");
 
-module.exports.create_post = async (req, res) => {
-  // desctructure the body of the request
+// #1 Posts
 
-  const { author, content } = req.body;
-
-  // add post to database
+module.exports.get_posts = async (req, res) => {
   try {
-    const post = new Post({
-      author,
-      content,
-    });
+    const posts = await Post.find().sort({ createdAt: -1 }).populate("author");
 
-    await post.save();
-
-    const populatePost = await post.populate("author");
-
-    res.status(200).json(populatePost);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-module.exports.fetch_recent_posts = async (req, res) => {
-  const { user_and_friends_ids } = req.body;
-
-  try {
-    // fetch 10 recent posts.
-    const recentPosts = await Post.find({
-      author: { $in: user_and_friends_ids },
-    })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate("author");
-
-    res.status(200).json(recentPosts);
+    res.status(200).json(posts);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 };
 
 module.exports.get_post = async (req, res) => {
-  const { post_id } = req.params;
-
-  // find post
-  const post = await Post.findById(post_id);
-
-  res.status(200).json(post);
-};
-
-module.exports.get_user_posts = async (req, res) => {
-  const { user_id } = req.params;
+  const { id } = req.params;
 
   try {
-    // find user posts
-    const userPosts = await Post.find({ author: user_id })
+    const post = await Post.findById(id);
+    res.status(200).json(post);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+module.exports.get_profile_posts = async (req, res) => {
+  const { profile_id } = req.params;
+
+  try {
+    const profile_posts = await Post.find({ author: profile_id })
       .sort({
         createdAt: -1,
       })
       .populate("author");
 
-    res.status(200).json(userPosts);
+    res.status(200).json(profile_posts);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 };
 
-module.exports.create_comment = async (req, res) => {
-  // desctrure the body of the request
-  const { author, content, post_id } = req.body;
+module.exports.create_post = async (req, res) => {
+  const { author, content, image } = req.body;
+
   try {
-    // add comment to database
-    const comment = new Comment({
-      author,
-      content,
-      post_id,
+    if (!image) {
+      const postWithtoutImage = new Post({
+        author,
+        content,
+        postImage: {
+          public_id: "",
+          url: "",
+        },
+      });
+
+      await postWithtoutImage.save();
+
+      const populatedPost = await postWithtoutImage.populate("author");
+
+      res.status(200).json(populatedPost);
+    }
+
+    if (image) {
+      const result = await cloudinary.uploader.upload(image, {
+        folder: "odin_book_post_images",
+      });
+
+      const postWithImage = new Post({
+        author,
+        content,
+        postImage: {
+          public_id: result.public_id,
+          url: result.secure_url,
+        },
+      });
+
+      await postWithImage.save();
+
+      const populatedPost = await postWithImage.populate("author");
+
+      res.status(200).json(populatedPost);
+    }
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+module.exports.delete_post = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const deleted_post = await Post.findByIdAndDelete(id);
+    await Comment.deleteMany({ id });
+
+    res.status(200).json(deleted_post);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+module.exports.update_post_likes = async (req, res) => {
+  const { id } = req.params;
+  const { user_id } = req.body;
+
+  let userMatch = false;
+  let filteredPostLikes = [];
+
+  const post = await Post.findById(id);
+
+  const checkUserIdExistsInPostLikesArray = () => {
+    const postLikes = post.usersLikes;
+    postLikes.map((postLike) => {
+      if (postLike == user_id) {
+        userMatch = true;
+        filteredPostLikes = postLikes.filter(
+          (postLike) => postLike !== user_id
+        );
+      }
     });
+  };
 
-    await comment.save();
+  checkUserIdExistsInPostLikesArray();
 
-    const populateComment = await comment.populate("author");
+  try {
+    if (!userMatch) {
+      const postLikes = await Post.findByIdAndUpdate(
+        id,
+        {
+          $push: { usersLikes: user_id },
+        },
+        { new: true }
+      );
 
-    res.status(200).json(populateComment);
+      res.status(200).json(postLikes);
+    } else {
+      const postLikes = await Post.findByIdAndUpdate(
+        id,
+        {
+          $set: { usersLikes: filteredPostLikes },
+        },
+        { new: true }
+      );
+
+      res.json(postLikes);
+    }
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 };
 
+// #2 Posts Comments
 module.exports.fetch_post_comments = async (req, res) => {
-  // desctructure the body of the request
-  const { post_id } = req.body;
+  const { post_id } = req.params;
 
   try {
-    // fetch post comments
     const postComments = await Comment.find({
       post_id,
     })
@@ -106,47 +167,52 @@ module.exports.fetch_post_comments = async (req, res) => {
   }
 };
 
-module.exports.update_post_likes = async (req, res) => {
-  // descructure the ID of the post from the request body
-  const { post_id, user_id } = req.body;
+module.exports.add_post_comment = async (req, res) => {
+  const { post_id } = req.params;
+  const { author, content } = req.body;
 
-  let userMatch = false;
-  let filteredPostLikes = [];
-
-  // check if user id exists in the post likes array
-
-  const post = await Post.findById(post_id);
-
-  const postLikes = post.usersLikes;
-  postLikes.map((postLike) => {
-    if (postLike == user_id) {
-      userMatch = true;
-      filteredPostLikes = postLikes.filter((postLike) => postLike !== user_id);
-    }
-  });
-
-  // push the user_id to the post likes array if the user does not already exist
-  if (!userMatch) {
-    // update the post likes array
-    const postLikes = await Post.findByIdAndUpdate(
+  try {
+    const comment = new Comment({
+      author,
+      content,
       post_id,
-      {
-        $push: { usersLikes: user_id },
-      },
-      { new: true }
-    );
+    });
 
-    res.json(postLikes);
-  } else {
-    // filter out the user_id from the post likes array if the user already exists
-    const postLikes = await Post.findByIdAndUpdate(
-      post_id,
-      {
-        $set: { usersLikes: filteredPostLikes },
-      },
-      { new: true }
-    );
+    await comment.save();
 
-    res.json(postLikes);
+    const addedComment = await comment.populate("author");
+
+    res.status(200).json(addedComment);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+module.exports.update_post_comment = async (req, res) => {
+  const { comment_id } = req.params;
+  const { updated_comment_content } = req.body;
+
+  try {
+    const updated_post_comment = await Comment.findByIdAndUpdate(
+      comment_id,
+      { $set: { content: updated_comment_content } },
+      { new: true }
+    ).populate("author");
+
+    res.status(200).json(updated_post_comment);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+module.exports.delete_post_comment = async (req, res) => {
+  const { comment_id } = req.params;
+
+  try {
+    await Comment.findByIdAndDelete(comment_id);
+
+    res.status(200).json(comment_id);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 };
