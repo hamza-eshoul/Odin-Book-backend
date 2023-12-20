@@ -42,10 +42,16 @@ router.post("/send_friend_request", userController.send_friend_request);
 router.post("/cancel_friend_request", userController.cancel_friend_request);
 
 // accept friend request
-router.post("/accept_friend_request", userController.accept_friend_request);
+router.post(
+  "/:user_id/accept_friend_request",
+  userController.accept_friend_request
+);
 
 // reject friend request
-router.post("/reject_friend_request", userController.reject_friend_request);
+router.post(
+  "/:user_id/reject_friend_request",
+  userController.reject_friend_request
+);
 
 // delete friend
 router.delete("/friends/:friend_id", userController.delete_friend);

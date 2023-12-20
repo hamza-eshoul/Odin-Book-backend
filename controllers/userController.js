@@ -188,9 +188,8 @@ exports.cancel_friend_request = async (req, res) => {
 };
 
 exports.accept_friend_request = async (req, res) => {
+  const { user_id } = req.params;
   const { friend_id } = req.body;
-
-  const user_id = req.user._id;
 
   const user = await User.findById(user_id);
   const filtered_user_incoming_requests = user.incoming_friends_requests.filter(
@@ -228,9 +227,8 @@ exports.accept_friend_request = async (req, res) => {
 };
 
 exports.reject_friend_request = async (req, res) => {
+  const { user_id } = req.params;
   const { friend_id } = req.body;
-
-  const user_id = req.user._id;
 
   const user = await User.findById(user_id);
   const filtered_user_incoming_requests = user.incoming_friends_requests.filter(
