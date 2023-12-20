@@ -55,7 +55,7 @@ router.post(
 
 // reject friend request
 router.post(
-  "/user_id/reject_friend_request",
+  "/:user_id/reject_friend_request",
   userController.reject_friend_request
 );
 
